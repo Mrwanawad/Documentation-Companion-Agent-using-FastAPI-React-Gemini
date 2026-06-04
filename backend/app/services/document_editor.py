@@ -6,6 +6,7 @@ can update one section at a time without rewriting the whole file.
 """
 
 import re
+from datetime import datetime, timezone
 from typing import Iterable
 
 
@@ -24,12 +25,14 @@ SECTIONS: tuple[str, ...] = (
     "Limitations & Known Issues",
     "Gaps & Red Flags",
     "FAQ",
+    "Attachments & References",
     "Approval",
 )
 
 
 RED_FLAGS_SECTION = "Gaps & Red Flags"
 SCREENSHOTS_SECTION = "Screenshots And Assets"
+ATTACHMENTS_SECTION = "Attachments & References"
 
 
 def _heading_regex(name: str) -> re.Pattern[str]:
@@ -126,3 +129,28 @@ def append_to_section(doc: str, section_name: str, markdown_to_append: str) -> s
         new_body = existing + "\n\n" + markdown_to_append.strip()
 
     return doc[:body_start] + "\n" + new_body + "\n\n" + doc[body_end:]
+
+
+def ensure_section(doc: str, section_name: str, placeholder: str = "_None yet._") -> str:
+    """Guarantee `## {section_name}` exists. Older guides predate some sections,
+    so insert the heading (before `## Approval` if present, else at EOF) when missing."""
+    if _heading_regex(section_name).search(doc):
+        return doc
+    block = f"## {section_name}\n{placeholder}\n"
+    approval = _heading_regex("Approval").search(doc)
+    if approval is not None:
+        idx = approval.start()
+        return doc[:idx].rstrip() + "\n\n" + block + "\n" + doc[idx:]
+    return doc.rstrip() + "\n\n" + block
+
+
+def link_attachment(doc: str, filename: str, url: str, note: str = "") -> str:
+    """Append a `- [filename](url) — added <date>` line to Attachments & References,
+    creating the section on demand for pre-existing guides."""
+    doc = ensure_section(doc, ATTACHMENTS_SECTION)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    label = filename.replace("]", "").strip() or "file"
+    entry = f"- [{label}]({url}) — added {today}"
+    if note.strip():
+        entry += f" — {note.strip()}"
+    return append_to_section(doc, ATTACHMENTS_SECTION, entry)

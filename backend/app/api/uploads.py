@@ -1,4 +1,9 @@
-"""Image upload + annotation endpoint, and static asset serving for documents."""
+"""Image upload + annotation endpoint, and static asset serving for documents.
+
+The chat-message turn ([services/agent.py]) is the primary path for attachments
+now; this endpoint remains for direct API use and shares the same annotation
+logic via `annotator.annotate_and_append`.
+"""
 
 from pathlib import Path
 
@@ -8,14 +13,14 @@ from pydantic import BaseModel
 
 from .. import store
 from ..config import settings
-from ..services import annotator, document_editor
+from ..services import annotator
 
 
 router = APIRouter(prefix="/api/chats", tags=["uploads"])
 
 
-MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB per image (Phase-4 cap)
-MAX_IMAGES_PER_DOC = 100
+MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB per image
+ASSET_KINDS = ("uploaded", "annotated", "files")
 
 
 class UploadedElement(BaseModel):
@@ -58,41 +63,16 @@ async def upload_image(chat_id: str, file: UploadFile = File(...)) -> UploadResp
             detail=f"Image exceeds {MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
         )
 
-    assets_root = _assets_root(chat_id, chat.current_version)
-    existing_count = 0
-    uploaded_dir = assets_root / "uploaded"
-    if uploaded_dir.exists():
-        existing_count = sum(1 for p in uploaded_dir.iterdir() if p.is_file())
-    if existing_count >= MAX_IMAGES_PER_DOC:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This document already has {existing_count} images (max {MAX_IMAGES_PER_DOC}).",
-        )
-
     try:
-        result, markdown_block = annotator.annotate(
-            raw_bytes=raw,
-            original_filename=file.filename or "upload.png",
-            mime_type=content_type,
-            assets_root=assets_root,
-            asset_url_base=_asset_url_base(chat_id),
+        result = annotator.annotate_and_append(
+            chat_id, chat.current_version, raw, file.filename or "upload.png", content_type
         )
+    except ValueError as e:  # per-document image cap
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Annotation failed: {e}")
 
-    # Append the new annotated block to Screenshots And Assets.
-    doc = store.read_guide(chat_id, chat.current_version) or ""
-    try:
-        new_doc = document_editor.append_to_section(
-            doc, document_editor.SCREENSHOTS_SECTION, markdown_block
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    ok = store.write_guide(chat_id, new_doc, chat.current_version)
-    if not ok:
-        raise HTTPException(status_code=409, detail="Document write rejected (approved?)")
-
+    base = _asset_url_base(chat_id)
     elements = [
         UploadedElement(
             index=i + 1,
@@ -102,10 +82,9 @@ async def upload_image(chat_id: str, file: UploadFile = File(...)) -> UploadResp
         )
         for i, el in enumerate(result.elements)
     ]
-
     return UploadResponse(
-        annotated_url=f"{_asset_url_base(chat_id)}/annotated/{result.annotated_filename}",
-        original_url=f"{_asset_url_base(chat_id)}/uploaded/{result.original_filename}",
+        annotated_url=f"{base}/annotated/{result.annotated_filename}",
+        original_url=f"{base}/uploaded/{result.original_filename}",
         page_summary=result.page_summary,
         elements=elements,
         element_count=len(elements),
@@ -114,7 +93,7 @@ async def upload_image(chat_id: str, file: UploadFile = File(...)) -> UploadResp
 
 @router.get("/{chat_id}/assets/{kind}/{filename}")
 def get_asset(chat_id: str, kind: str, filename: str) -> FileResponse:
-    if kind not in ("uploaded", "annotated"):
+    if kind not in ASSET_KINDS:
         raise HTTPException(status_code=404, detail="Unknown asset kind")
     # Block path traversal — only allow plain filenames.
     if "/" in filename or "\\" in filename or filename.startswith(".."):

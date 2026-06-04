@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
+from slugify import slugify
 
 from .. import store
 from ..models import ChatCreate, ChatMeta, ChatStatus, ChatUpdate, DocumentRead, DocumentWrite
 from ..services import browser as browser_service
+from ..services import exporter
 
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
@@ -44,6 +47,7 @@ def update_chat(chat_id: str, body: ChatUpdate) -> ChatMeta:
 @router.delete("/{chat_id}", status_code=204)
 async def delete_chat(chat_id: str) -> None:
     await browser_service.close_session(chat_id)
+    browser_service.cleanup_profile(chat_id)
     ok = store.delete_chat(chat_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -62,6 +66,21 @@ def read_document(chat_id: str) -> DocumentRead:
         version=meta.current_version,
         content=content,
         readonly=meta.status == ChatStatus.APPROVED,
+    )
+
+
+@router.get("/{chat_id}/export.html")
+def export_document(chat_id: str) -> HTMLResponse:
+    meta = store.get_chat(chat_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    html = exporter.render_html(chat_id, meta.current_version, meta.name)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    filename = slugify(meta.name) or "document"
+    return HTMLResponse(
+        content=html,
+        headers={"Content-Disposition": f'attachment; filename="{filename}.html"'},
     )
 
 

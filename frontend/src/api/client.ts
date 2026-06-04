@@ -22,11 +22,26 @@ export const api = {
     }),
   deleteChat: (id: string) =>
     request<void>(`/api/chats/${id}`, { method: "DELETE" }),
-  updateChat: (id: string, patch: Partial<Pick<ChatMeta, "name" | "browser_enabled" | "status">>) =>
+  updateChat: (
+    id: string,
+    patch: Partial<
+      Pick<
+        ChatMeta,
+        | "name"
+        | "browser_enabled"
+        | "status"
+        | "browser_url"
+        | "browser_email"
+        | "browser_password"
+        | "browser_notes"
+      >
+    >,
+  ) =>
     request<ChatMeta>(`/api/chats/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  exportUrl: (id: string) => `/api/chats/${id}/export.html`,
   getDocument: (id: string) =>
     request<DocumentRead>(`/api/chats/${id}/document`),
   writeDocument: (id: string, content: string) =>
@@ -56,6 +71,8 @@ export interface UploadElement {
   label: string;
   element_type: string;
   inferred_action: string;
+  is_repeated_group?: boolean;
+  instance_count?: number;
 }
 
 export interface UploadResponse {
@@ -76,10 +93,24 @@ export interface BrowserStep {
   notes: string;
 }
 
+export interface AttachmentEvent {
+  type: "attachment";
+  kind: "image" | "pdf";
+  name: string;
+  annotated_url?: string;
+  original_url?: string;
+  file_url?: string;
+  page_summary?: string;
+  elements?: UploadElement[];
+  element_count?: number;
+  error?: string;
+}
+
 export type AgentEvent =
   | { type: "text"; text: string }
   | { type: "tool_call"; name: string; args: Record<string, unknown> }
   | ({ type: "browser_step" } & BrowserStep)
+  | AttachmentEvent
   | { type: "doc_updated" }
   | { type: "error"; message: string }
   | { type: "done" };
@@ -87,13 +118,20 @@ export type AgentEvent =
 export async function streamMessage(
   chatId: string,
   text: string,
+  files: File[],
+  browse: boolean,
   onEvent: (e: AgentEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const form = new FormData();
+  form.append("text", text);
+  if (browse) form.append("browse", "true");
+  for (const f of files) form.append("files", f, f.name);
   const res = await fetch(`/api/chats/${chatId}/messages`, {
+    // No Content-Type header — the browser sets the multipart boundary.
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ text }),
+    headers: { Accept: "text/event-stream" },
+    body: form,
     signal,
   });
   if (!res.ok || !res.body) {

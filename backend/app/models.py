@@ -25,6 +25,12 @@ class ChatMeta(BaseModel):
     created_at: str = Field(default_factory=utcnow_iso)
     updated_at: str = Field(default_factory=utcnow_iso)
     current_version: str = "v1.0"
+    # Saved browser-walkthrough config (entered via the 🌐 popup). Stored
+    # locally per chat so the agent can open the URL and log in without asking.
+    browser_url: Optional[str] = None
+    browser_email: Optional[str] = None
+    browser_password: Optional[str] = None
+    browser_notes: Optional[str] = None
 
 
 class ChatCreate(BaseModel):
@@ -36,6 +42,10 @@ class ChatUpdate(BaseModel):
     name: Optional[str] = None
     browser_enabled: Optional[bool] = None
     status: Optional[ChatStatus] = None
+    browser_url: Optional[str] = None
+    browser_email: Optional[str] = None
+    browser_password: Optional[str] = None
+    browser_notes: Optional[str] = None
 
 
 class DocumentRead(BaseModel):

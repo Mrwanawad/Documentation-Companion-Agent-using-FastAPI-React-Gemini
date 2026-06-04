@@ -22,6 +22,7 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(patch),
     }),
+    exportUrl: (id) => `/api/chats/${id}/export.html`,
     getDocument: (id) => request(`/api/chats/${id}/document`),
     writeDocument: (id, content) => request(`/api/chats/${id}/document`, {
         method: "PUT",
@@ -42,11 +43,18 @@ export const api = {
         return res.json();
     },
 };
-export async function streamMessage(chatId, text, onEvent, signal) {
+export async function streamMessage(chatId, text, files, browse, onEvent, signal) {
+    const form = new FormData();
+    form.append("text", text);
+    if (browse)
+        form.append("browse", "true");
+    for (const f of files)
+        form.append("files", f, f.name);
     const res = await fetch(`/api/chats/${chatId}/messages`, {
+        // No Content-Type header — the browser sets the multipart boundary.
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ text }),
+        headers: { Accept: "text/event-stream" },
+        body: form,
         signal,
     });
     if (!res.ok || !res.body) {

@@ -4,6 +4,8 @@ import { StatusBadge } from "./StatusBadge";
 interface Props {
   chats: ChatMeta[];
   activeId: string | null;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onSelect: (id: string) => void;
   onDelete: (chat: ChatMeta) => void;
   onNew: () => void;
@@ -19,7 +21,20 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function Sidebar({ chats, activeId, onSelect, onDelete, onNew }: Props) {
+export function Sidebar({ chats, activeId, collapsed, onToggleCollapse, onSelect, onDelete, onNew }: Props) {
+  if (collapsed) {
+    return (
+      <aside className="sidebar sidebar-rail">
+        <button type="button" className="rail-btn" title="Expand sidebar" onClick={onToggleCollapse}>
+          ›
+        </button>
+        <button type="button" className="rail-btn rail-new" title="New chat" onClick={onNew}>
+          +
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -27,7 +42,12 @@ export function Sidebar({ chats, activeId, onSelect, onDelete, onNew }: Props) {
           <span className="brand-mark">&lt;j&gt;</span>
           <span>Coject Docs</span>
         </div>
-        <button type="button" className="new-chat-btn" onClick={onNew}>+ New</button>
+        <div className="sidebar-header-actions">
+          <button type="button" className="new-chat-btn" onClick={onNew}>+ New</button>
+          <button type="button" className="collapse-btn" title="Collapse sidebar" onClick={onToggleCollapse}>
+            «
+          </button>
+        </div>
       </div>
       <div className="sidebar-list">
         {chats.length === 0 ? (

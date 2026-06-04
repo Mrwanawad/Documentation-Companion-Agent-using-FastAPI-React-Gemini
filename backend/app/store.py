@@ -55,6 +55,9 @@ _None recorded yet._
 ## FAQ
 _Common questions about this page._
 
+## Attachments & References
+_None yet._
+
 ## Approval
 - **Reviewer:** Coject R&D Team
 - **State:** pending
@@ -122,6 +125,7 @@ def create_chat(name: str, browser_enabled: bool) -> ChatMeta:
     doc_dir = _doc_dir(chat_id)
     (doc_dir / "assets" / "uploaded").mkdir(parents=True, exist_ok=True)
     (doc_dir / "assets" / "annotated").mkdir(parents=True, exist_ok=True)
+    (doc_dir / "assets" / "files").mkdir(parents=True, exist_ok=True)
     _guide_path(chat_id).write_text(GUIDE_TEMPLATE.format(name=name))
     _metadata_path(chat_id).write_text(json.dumps({
         "product": name,
