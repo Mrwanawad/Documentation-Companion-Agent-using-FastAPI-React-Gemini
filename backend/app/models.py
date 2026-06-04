@@ -22,6 +22,9 @@ class ChatMeta(BaseModel):
     name: str
     browser_enabled: bool = True
     status: ChatStatus = ChatStatus.DRAFT
+    # Document language: "en" or "ar". Drives the guide template, the agent's
+    # output language, and RTL rendering. Defaults keep older chats working.
+    language: str = "en"
     created_at: str = Field(default_factory=utcnow_iso)
     updated_at: str = Field(default_factory=utcnow_iso)
     current_version: str = "v1.0"
@@ -36,12 +39,14 @@ class ChatMeta(BaseModel):
 class ChatCreate(BaseModel):
     name: str
     browser_enabled: bool = True
+    language: str = "en"
 
 
 class ChatUpdate(BaseModel):
     name: Optional[str] = None
     browser_enabled: Optional[bool] = None
     status: Optional[ChatStatus] = None
+    language: Optional[str] = None
     browser_url: Optional[str] = None
     browser_email: Optional[str] = None
     browser_password: Optional[str] = None

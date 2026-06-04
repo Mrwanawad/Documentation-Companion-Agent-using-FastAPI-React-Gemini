@@ -1,13 +1,15 @@
 import { useState } from "react";
+import type { DocLanguage } from "../types";
 
 interface Props {
   onCancel: () => void;
-  onCreate: (name: string, browserEnabled: boolean) => Promise<void>;
+  onCreate: (name: string, browserEnabled: boolean, language: DocLanguage) => Promise<void>;
 }
 
 export function NewChatDialog({ onCancel, onCreate }: Props) {
   const [name, setName] = useState("");
   const [browserEnabled, setBrowserEnabled] = useState(true);
+  const [language, setLanguage] = useState<DocLanguage>("en");
   const [busy, setBusy] = useState(false);
 
   const trimmed = name.trim();
@@ -16,7 +18,7 @@ export function NewChatDialog({ onCancel, onCreate }: Props) {
     if (!trimmed || busy) return;
     setBusy(true);
     try {
-      await onCreate(trimmed, browserEnabled);
+      await onCreate(trimmed, browserEnabled, language);
     } finally {
       setBusy(false);
     }
@@ -43,6 +45,30 @@ export function NewChatDialog({ onCancel, onCreate }: Props) {
           />
           <div className="field-hint">
             One page/screen of your SaaS or ERP. The agent will interview you and write a guide for that single page.
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Document language</label>
+          <div className="seg" role="group" aria-label="Document language">
+            <button
+              type="button"
+              className={`seg-btn${language === "en" ? " active" : ""}`}
+              onClick={() => setLanguage("en")}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={`seg-btn${language === "ar" ? " active" : ""}`}
+              onClick={() => setLanguage("ar")}
+              lang="ar"
+            >
+              العربية
+            </button>
+          </div>
+          <div className="field-hint">
+            The agent writes the guide and replies in this language. You can also ask it to switch later in chat.
           </div>
         </div>
 

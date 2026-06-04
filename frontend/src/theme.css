@@ -628,76 +628,131 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  padding: 24px;
+  animation: dialog-fade 0.14s ease-out;
+}
+@keyframes dialog-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .dialog {
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
   padding: 24px;
-  width: 420px;
-  max-width: 90vw;
+  width: 460px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  animation: dialog-pop 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes dialog-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .dialog h2 {
-  margin: 0 0 16px;
-  font-size: 18px;
+  margin: 0 0 18px;
+  font-size: 19px;
+  font-weight: 700;
 }
 .field {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .field label {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--text);
+  margin-bottom: 7px;
+  white-space: nowrap;
 }
 .field input[type="text"],
 .field input[type="url"],
 .field input[type="password"],
 .field textarea {
   width: 100%;
-  background: var(--input-bg);
-  color: var(--input-text);
-  border: none;
-  border-radius: 8px;
+  background: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
   padding: 10px 12px;
   outline: none;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--text-subtle);
 }
 .field input[type="text"]:focus,
 .field input[type="url"]:focus,
 .field input[type="password"]:focus,
 .field textarea:focus {
-  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field input[dir="auto"]:dir(rtl),
+.field textarea[dir="auto"]:dir(rtl) {
+  text-align: right;
 }
 .dialog-sub {
-  margin: -8px 0 16px;
-  font-size: 12px;
+  margin: -10px 0 18px;
+  font-size: 13px;
   color: var(--text-muted);
   line-height: 1.5;
 }
 .field-row {
   display: flex;
   gap: 12px;
+  align-items: flex-start;
 }
 .field-row .field {
   flex: 1;
   min-width: 0;
 }
+.field-row .field label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .field .opt {
-  text-transform: none;
-  letter-spacing: 0;
   color: var(--text-subtle);
   font-weight: 400;
+  font-size: 11px;
+}
+/* Segmented control (e.g. document language) */
+.seg {
+  display: flex;
+  gap: 8px;
+}
+.seg-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--bg-control);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .dialog-actions {
   display: flex;
@@ -788,6 +843,8 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
   font-size: 16px;
   flex-shrink: 0;
 }
+.attachment-chip-icon svg { width: 17px; height: 17px; }
+.attachment-pill svg { width: 13px; height: 13px; vertical-align: -2px; flex-shrink: 0; }
 .attachment-chip-name {
   white-space: nowrap;
   overflow: hidden;
@@ -918,48 +975,85 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
 
 /* ── Composer ─────────────────────────────────────────────── */
 .composer {
-  border-top: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 10px 16px 14px;
 }
 .composer-row {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  background: var(--bg-control);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 6px 6px 6px 8px;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 26px;
+  padding: 6px 6px 6px 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.composer-row:focus-within { border-color: var(--accent); }
-.composer-row.browse-active { border-color: #60a5fa; box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35); }
-.composer-icons { display: flex; gap: 2px; align-self: flex-end; padding-bottom: 2px; }
+.composer-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.composer-row.browse-active {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.22), 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.composer-icons { display: flex; gap: 2px; align-self: flex-end; }
+.composer-actions { display: flex; align-items: center; gap: 4px; align-self: flex-end; }
 .icon-btn {
-  width: 34px; height: 34px;
-  border-radius: 9px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
-  font-size: 16px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
 }
+.icon-btn svg { width: 19px; height: 19px; display: block; }
 .icon-btn:hover { color: var(--text); background: var(--bg-hover); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .icon-btn.on { color: var(--accent); }
+.icon-btn.recording {
+  color: #fff;
+  background: var(--danger);
+  animation: mic-pulse 1.3s ease-in-out infinite;
+}
+.icon-btn.busy { color: var(--accent); }
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mini-spin 0.7s linear infinite;
+}
+@keyframes mini-spin {
+  to { transform: rotate(360deg); }
+}
 
 .composer-input { position: relative; flex: 1; min-width: 0; }
+/* The visible text is the highlight layer; the textarea sits on top with a
+   transparent glyph fill and a visible caret. The two layers MUST share every
+   metric (font, weight, spacing, padding, wrapping) or the caret drifts — so
+   the command token below changes colour only, never weight or spacing. */
 .input-highlight, .composer-textarea {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: normal;
   line-height: 1.5;
-  padding: 8px 4px;
+  padding: 7px 4px;
   margin: 0;
   border: 0;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
   min-height: 38px;
-  max-height: 180px;
+  max-height: 200px;
+  text-align: start;
 }
 .composer-textarea {
   position: relative;
@@ -967,7 +1061,7 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
   width: 100%;
   background: transparent;
   color: transparent;
-  caret-color: var(--text);
+  caret-color: var(--accent);
   resize: none;
   outline: none;
   overflow-y: auto;
@@ -981,22 +1075,25 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
   overflow-y: auto;
   z-index: 0;
 }
-.input-highlight .cmd-token { color: #60a5fa; font-weight: 700; }
+/* colour only — matching the textarea's normal weight keeps the caret aligned */
+.input-highlight .cmd-token { color: #60a5fa; }
 
-.composer-btn {
+.composer-send {
   flex: 0 0 auto;
-  align-self: flex-end;
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 13px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   border: none;
+  transition: background 0.15s, transform 0.1s;
 }
-.send-btn { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
-.send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.stop-btn { background: var(--danger); color: #fff; }
-.composer-hint { font-size: 11px; color: var(--text-subtle); margin-top: 6px; padding: 0 4px; }
+.composer-send svg { width: 18px; height: 18px; display: block; }
+.composer-send:active { transform: scale(0.94); }
+.send-btn { background: var(--accent); color: #000; }
+.send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.send-btn:disabled { background: var(--bg-control); color: var(--text-subtle); cursor: not-allowed; }
+.stop-btn { background: var(--danger); color: #fff; font-size: 13px; }
+.composer-hint { font-size: 11px; color: var(--text-subtle); margin-top: 7px; padding: 0 6px; }
 
 /* Chat header / bubble extras */
 .chat-browser-on { font-size: 11px; color: var(--accent); }
@@ -1058,3 +1155,20 @@ body.dragging-col { cursor: col-resize; -webkit-user-select: none; user-select: 
 .md-editor .ProseMirror th { background: var(--bg-elevated); }
 .md-editor .ProseMirror em { color: var(--text-muted); }
 .md-editor .ProseMirror hr { border: none; border-top: 1px solid var(--border); }
+
+/* ── RTL document rendering (Arabic guides) ───────────────── */
+.md-editor[dir="rtl"] .ProseMirror { text-align: right; }
+.md-editor[dir="rtl"] .ProseMirror th,
+.md-editor[dir="rtl"] .ProseMirror td { text-align: right; }
+.md-editor[dir="rtl"] .ProseMirror blockquote {
+  border-left: none;
+  border-right: 3px solid var(--border-strong);
+  padding-left: 0;
+  padding-right: 12px;
+  margin-left: 0;
+  margin-right: 0;
+}
+.md-editor[dir="rtl"] .ProseMirror ul,
+.md-editor[dir="rtl"] .ProseMirror ol { padding-left: 0; padding-right: 24px; }
+/* Markdown source textarea: per-line direction for mixed LTR/RTL markdown. */
+.canvas-editor { unicode-bidi: plaintext; }

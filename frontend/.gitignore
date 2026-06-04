@@ -1,0 +1,10 @@
+node_modules
+dist
+.vite
+
+# Compiled output must never sit next to the .tsx/.ts source: with Vite's default
+# resolution, a stale `Foo.js` shadows `Foo.tsx` and silently overrides edits.
+# The build typechecks with `tsc --noEmit` and bundles via Vite, so no source
+# siblings are emitted; ignore them defensively in case someone runs bare `tsc`.
+src/**/*.js
+!src/**/*.config.js

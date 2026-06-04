@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMeta } from "../types";
-import { streamMessage, type AttachmentEvent, type BrowserStep } from "../api/client";
+import { api, streamMessage, type AttachmentEvent, type BrowserStep } from "../api/client";
+import { WavRecorder, micSupported } from "../lib/recorder";
 import { BrowserConfigDialog } from "./BrowserConfigDialog";
 
 interface Props {
@@ -9,7 +10,7 @@ interface Props {
   onDocUpdated: () => void;
 }
 
-type AttachKind = "image" | "pdf";
+type AttachKind = "image" | "pdf" | "video";
 
 interface PendingAttachment {
   id: string;
@@ -38,13 +39,15 @@ interface Message {
 }
 
 const MAX_FILES = 8;
-const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = 20 * 1024 * 1024; // images & PDFs
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // screen recordings
 // `/browse` at the very start of the message, followed by whitespace/end.
 const BROWSE_RE = /^\/browse(\s[\s\S]*|)$/i;
 
 function fileKind(file: File): AttachKind | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type === "application/pdf") return "pdf";
+  if (file.type.startsWith("video/")) return "video";
   return null;
 }
 
@@ -54,6 +57,54 @@ function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Inline line icons (Feather-style) — crisp at any size, inherit currentColor.
+const svgProps = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+const IconPaperclip = () => (
+  <svg {...svgProps}>
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+const IconGlobe = () => (
+  <svg {...svgProps}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+const IconMic = () => (
+  <svg {...svgProps}>
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </svg>
+);
+const IconArrowUp = () => (
+  <svg {...svgProps}>
+    <line x1="12" y1="20" x2="12" y2="5" />
+    <polyline points="5 12 12 5 19 12" />
+  </svg>
+);
+const IconStop = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
+const IconFilm = () => (
+  <svg {...svgProps}>
+    <rect x="2.5" y="4" width="19" height="16" rx="2" />
+    <path d="M7 4v16M17 4v16M2.5 9h4.5M2.5 15h4.5M17 9h4.5M17 15h4.5" />
+  </svg>
+);
+
 export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -62,13 +113,19 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
   const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
   const [showBrowserCfg, setShowBrowserCfg] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
+  // Voice input: record mic audio, then Gemini transcribes it on the backend.
+  const recorderRef = useRef<WavRecorder | null>(null);
 
   const browseMode = BROWSE_RE.test(draft);
+  const micOk = micSupported();
 
   useEffect(() => {
     setMessages([]);
@@ -78,6 +135,10 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
     setShowBrowserCfg(false);
     abortRef.current?.abort();
     abortRef.current = null;
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
+    setRecording(false);
+    setTranscribing(false);
   }, [chat.id]);
 
   useEffect(() => {
@@ -85,6 +146,7 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
     return () => {
       urls.forEach((u) => URL.revokeObjectURL(u));
       urls.clear();
+      recorderRef.current?.cancel();
     };
   }, []);
 
@@ -92,6 +154,16 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
     const el = scrollerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // Auto-grow the composer from one row up to its max, so the box hugs its
+  // content instead of always reserving two rows of empty height. The overlay
+  // is inset:0 over this textarea, so it tracks the height automatically.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, [draft]);
 
   function systemError(text: string) {
     setMessages((m) => [...m, { role: "system", text: "", error: text }]);
@@ -104,15 +176,17 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
     for (const file of incoming) {
       const kind = fileKind(file);
       if (!kind) {
-        systemError(`"${file.name}" was skipped — only images and PDFs can be attached.`);
+        systemError(`"${file.name}" was skipped — only images, PDFs, and videos can be attached.`);
         continue;
       }
-      if (file.size > MAX_BYTES) {
-        systemError(`"${file.name}" was skipped — exceeds the 20 MB limit.`);
+      const limit = kind === "video" ? MAX_VIDEO_BYTES : MAX_BYTES;
+      if (file.size > limit) {
+        const cap = kind === "video" ? "200 MB" : "20 MB";
+        systemError(`"${file.name}" was skipped — exceeds the ${cap} limit.`);
         continue;
       }
       let previewUrl: string | undefined;
-      if (kind === "image") {
+      if (kind === "image" || kind === "video") {
         previewUrl = URL.createObjectURL(file);
         objectUrlsRef.current.add(previewUrl);
       }
@@ -162,6 +236,63 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
 
   function stop() {
     abortRef.current?.abort();
+  }
+
+  async function toggleMic() {
+    if (transcribing) return;
+
+    // Stop an in-progress recording → transcribe it with Gemini.
+    if (recording) {
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      setRecording(false);
+      if (!recorder) return;
+      let blob: Blob | null = null;
+      try {
+        blob = await recorder.stop();
+      } catch {
+        blob = null;
+      }
+      if (!blob) {
+        systemError("No audio was recorded — try holding the mic a moment longer.");
+        return;
+      }
+      setTranscribing(true);
+      try {
+        const text = await api.transcribe(blob);
+        if (text) {
+          setDraft((d) => (d ? d.replace(/\s+$/, "") + " " : "") + text);
+          textareaRef.current?.focus();
+        } else {
+          systemError("No speech was detected in the recording.");
+        }
+      } catch (e) {
+        systemError(`Couldn't transcribe the audio: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setTranscribing(false);
+      }
+      return;
+    }
+
+    // Start a new recording.
+    if (!micOk) {
+      systemError("Voice input isn't supported in this browser.");
+      return;
+    }
+    const recorder = new WavRecorder();
+    try {
+      await recorder.start();
+    } catch (e) {
+      const denied = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      systemError(
+        denied
+          ? "Microphone access was blocked. Allow microphone access for this site, then try again."
+          : `Couldn't start the microphone: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+    recorderRef.current = recorder;
+    setRecording(true);
   }
 
   async function send() {
@@ -274,7 +405,7 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
       <div className="chat-messages" ref={scrollerRef}>
         {messages.length === 0 ? (
           <div className="chat-empty">
-            Start by describing the page. Attach screenshots or PDFs (📎, paste, or drag &amp; drop), or type <code>/browse</code> to have the agent open and verify it live.
+            Start by describing the page. Attach screenshots, PDFs, or a screen recording (📎, paste, or drag &amp; drop), or type <code>/browse</code> to have the agent open and verify it live.
           </div>
         ) : (
           messages.map((m, i) => <MessageBubble key={i} message={m} onPreview={setPreview} />)
@@ -297,7 +428,7 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
                 {a.kind === "image" && a.previewUrl ? (
                   <img src={a.previewUrl} alt={a.file.name} />
                 ) : (
-                  <span className="attachment-chip-icon">📄</span>
+                  <span className="attachment-chip-icon">{a.kind === "video" ? <IconFilm /> : "📄"}</span>
                 )}
                 <span className="attachment-chip-name">{a.file.name}</span>
                 <button
@@ -321,26 +452,28 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
             <button
               type="button"
               className="icon-btn"
-              title="Attach screenshots or PDFs"
+              title="Attach screenshots, PDFs, or screen recordings"
+              aria-label="Attach files"
               onClick={() => fileInputRef.current?.click()}
             >
-              📎
+              <IconPaperclip />
             </button>
             <button
               type="button"
               className={`icon-btn${chat.browser_enabled ? " on" : ""}`}
               title="Browser walkthrough settings (URL, login, notes)"
+              aria-label="Browser walkthrough settings"
               onClick={() => setShowBrowserCfg(true)}
             >
-              🌐
+              <IconGlobe />
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf"
+              accept="image/*,application/pdf,video/*"
               multiple
               className="hidden-file"
-              aria-label="Attach screenshots or PDFs"
+              aria-label="Attach screenshots, PDFs, or screen recordings"
               onChange={(e) => {
                 if (e.target.files?.length) addFiles(e.target.files);
                 e.target.value = "";
@@ -349,13 +482,15 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
           </div>
 
           <div className="composer-input">
-            <div className="input-highlight" ref={highlightRef} aria-hidden="true">
+            <div className="input-highlight" ref={highlightRef} aria-hidden="true" dir="auto">
               {renderHighlight(draft)}
             </div>
             <textarea
+              ref={textareaRef}
               className="composer-textarea"
-              placeholder="Message the agent…  ·  /browse to open & verify the page"
+              placeholder="Message the agent…"
               value={draft}
+              dir="auto"
               onChange={(e) => setDraft(e.target.value)}
               onPaste={handlePaste}
               onScroll={(e) => {
@@ -367,33 +502,65 @@ export function ChatPanel({ chat, onChatUpdated, onDocUpdated }: Props) {
                   send();
                 }
               }}
-              rows={2}
+              rows={1}
             />
           </div>
 
-          {sending ? (
-            <button type="button" className="composer-btn stop-btn" onClick={stop} title="Stop generating">
-              ◼ Stop
-            </button>
-          ) : (
+          <div className="composer-actions">
             <button
               type="button"
-              className="composer-btn send-btn"
-              onClick={send}
-              disabled={!canSend}
-              title="Send"
+              className={`icon-btn${recording ? " recording" : ""}${transcribing ? " busy" : ""}`}
+              onClick={toggleMic}
+              disabled={!micOk || transcribing}
+              title={
+                !micOk
+                  ? "Voice input isn't supported in this browser"
+                  : transcribing
+                    ? "Transcribing…"
+                    : recording
+                      ? "Stop and transcribe"
+                      : "Voice input (Gemini transcribes your recording)"
+              }
+              aria-label="Voice input"
             >
-              Send
+              {transcribing ? <span className="mini-spinner" /> : recording ? <IconStop /> : <IconMic />}
             </button>
-          )}
+
+            {sending ? (
+              <button
+                type="button"
+                className="composer-send stop-btn"
+                onClick={stop}
+                title="Stop generating"
+                aria-label="Stop generating"
+              >
+                <IconStop />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="composer-send send-btn"
+                onClick={send}
+                disabled={!canSend}
+                title="Send"
+                aria-label="Send message"
+              >
+                <IconArrowUp />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="composer-hint">
-          {sending
-            ? "Agent is responding — keep typing; press Stop to interrupt, then send."
-            : browseMode
-              ? "Browse mode: the agent will open & verify the page using your saved settings."
-              : "Enter to send · Shift+Enter for newline · 📎/paste/drag to attach · /browse to verify live"}
+          {recording
+            ? "● Recording… click the mic again to stop and transcribe."
+            : transcribing
+              ? "Transcribing your recording…"
+              : sending
+                ? "Agent is responding — keep typing; press Stop to interrupt, then send."
+                : browseMode
+                  ? "Browse mode: the agent will open & verify the page using your saved settings."
+                  : "Enter to send · Shift+Enter for newline · attach images, PDFs & recordings · /browse to verify live"}
         </div>
       </div>
 
@@ -446,8 +613,8 @@ function MessageBubble({
     !!message.attachments?.length ||
     !!message.sentAttachments?.length;
   return (
-    <div className={`bubble ${variant}`}>
-      {message.role === "user" && message.browse ? <span className="browse-tag">/browse</span> : null}
+    <div className={`bubble ${variant}`} dir="auto">
+      {message.role === "user" && message.browse ? <span className="browse-tag" dir="ltr">/browse</span> : null}
       {message.text ||
         (message.streaming && !hasExtras ? <span className="bubble-stream-placeholder">…</span> : null)}
 
@@ -465,7 +632,7 @@ function MessageBubble({
               />
             ) : (
               <span key={i} className="attachment-pill" title={a.name}>
-                📄 {a.name}
+                {a.kind === "video" ? <IconFilm /> : "📄"} {a.name}
               </span>
             ),
           )}
@@ -473,7 +640,7 @@ function MessageBubble({
       ) : null}
 
       {message.toolCalls?.map((tc, i) => (
-        <div key={i} className="tool-call">
+        <div key={i} className="tool-call" dir="ltr">
           <span className="tool-call-name">→ {tc.name}</span>
           {tc.name === "update_document_section" && tc.args.section_name ? (
             <span> ({String(tc.args.section_name)})</span>
@@ -486,7 +653,7 @@ function MessageBubble({
       ))}
 
       {message.browserSteps?.map((step, i) => (
-        <div key={i} className="browser-step">
+        <div key={i} className="browser-step" dir="ltr">
           <div className="browser-step-action">{step.action}</div>
           <div className="browser-step-meta">
             <span>{step.title || "(untitled)"}</span>
@@ -542,6 +709,15 @@ function MessageBubble({
                 ) : null}
               </>
             )}
+          </div>
+        ) : att.kind === "video" ? (
+          <div key={i} className="upload-preview">
+            {att.error ? (
+              <div className="bubble-error">Couldn't analyze {att.name}: {att.error}</div>
+            ) : null}
+            <a className="attachment-pill attachment-pill-link" href={att.file_url} target="_blank" rel="noreferrer">
+              <IconFilm /> {att.name} — screen recording linked
+            </a>
           </div>
         ) : (
           <a key={i} className="attachment-pill attachment-pill-link" href={att.file_url} target="_blank" rel="noreferrer">

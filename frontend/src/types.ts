@@ -6,6 +6,8 @@ export type ChatStatus =
   | "superseded"
   | "archived";
 
+export type DocLanguage = "en" | "ar";
+
 export interface ChatMeta {
   id: string;
   name: string;
@@ -14,6 +16,7 @@ export interface ChatMeta {
   created_at: string;
   updated_at: string;
   current_version: string;
+  language?: DocLanguage;
   browser_url?: string | null;
   browser_email?: string | null;
   browser_password?: string | null;

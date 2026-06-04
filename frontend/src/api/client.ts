@@ -1,4 +1,4 @@
-import type { ChatMeta, DocumentRead } from "../types";
+import type { ChatMeta, DocLanguage, DocumentRead } from "../types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -15,10 +15,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listChats: () => request<ChatMeta[]>("/api/chats"),
-  createChat: (name: string, browser_enabled: boolean) =>
+  createChat: (name: string, browser_enabled: boolean, language: DocLanguage = "en") =>
     request<ChatMeta>("/api/chats", {
       method: "POST",
-      body: JSON.stringify({ name, browser_enabled }),
+      body: JSON.stringify({ name, browser_enabled, language }),
     }),
   deleteChat: (id: string) =>
     request<void>(`/api/chats/${id}`, { method: "DELETE" }),
@@ -30,6 +30,7 @@ export const api = {
         | "name"
         | "browser_enabled"
         | "status"
+        | "language"
         | "browser_url"
         | "browser_email"
         | "browser_password"
@@ -51,6 +52,17 @@ export const api = {
     }),
   clearMessages: (id: string) =>
     request<void>(`/api/chats/${id}/messages`, { method: "DELETE" }),
+  transcribe: async (audio: Blob): Promise<string> => {
+    const form = new FormData();
+    form.append("file", audio, "recording.wav");
+    const res = await fetch("/api/transcribe", { method: "POST", body: form });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status}: ${text || res.statusText}`);
+    }
+    const data = (await res.json()) as { text: string };
+    return data.text;
+  },
   uploadImage: async (id: string, file: File): Promise<UploadResponse> => {
     const form = new FormData();
     form.append("file", file);
@@ -95,7 +107,7 @@ export interface BrowserStep {
 
 export interface AttachmentEvent {
   type: "attachment";
-  kind: "image" | "pdf";
+  kind: "image" | "pdf" | "video";
   name: string;
   annotated_url?: string;
   original_url?: string;

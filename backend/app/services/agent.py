@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -35,6 +36,20 @@ class Attachment:
     @property
     def is_pdf(self) -> bool:
         return self.mime == "application/pdf"
+
+    @property
+    def is_video(self) -> bool:
+        return self.mime.startswith("video/")
+
+
+# Videos up to this size are sent inline; larger ones go through the Files API.
+INLINE_VIDEO_LIMIT = 18 * 1024 * 1024
+
+
+def _file_state(f: Any) -> str:
+    """Normalize a google-genai File.state to an upper-case name string."""
+    state = getattr(f, "state", None)
+    return str(getattr(state, "name", state) or "").upper()
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are the Documentation Companion Agent for Coject. \
@@ -73,7 +88,7 @@ Section guidance:
 - **Screenshots And Assets** — annotated screenshots + interactive-element tables go here (the upload pipeline writes here directly).
 - **Limitations & Known Issues** — things this page can't do or known bugs.
 - **Gaps & Red Flags** — uncertainty, missing info, observed-vs-described mismatches.
-
+{language_directive}
 ## This chat's settings
 - Page title: "{name}"
 - Browser walkthrough: {browser_state}
@@ -215,6 +230,26 @@ browser-evidence questions and do NOT write to the "Browser Walkthrough Evidence
 section. Visual evidence will come from images the developer uploads."""
 
 
+LANGUAGE_DIRECTIVE_AR = """
+## OUTPUT LANGUAGE — ARABIC (العربية)
+This guide is in Arabic. Write EVERYTHING in Modern Standard Arabic (العربية الفصحى): \
+every document section body AND every chat reply to the developer. Use the Arabic section \
+names listed above when calling `update_document_section` (English names also work). Keep \
+product UI labels, code, URLs, and proper nouns in their original form, but write all \
+explanatory prose in Arabic. Lay content out cleanly for right-to-left reading. If the \
+developer writes to you in English, keep the document in Arabic unless they explicitly ask \
+to switch (then call `set_document_language`).
+"""
+
+
+LANGUAGE_DIRECTIVE_EN = """
+## OUTPUT LANGUAGE
+Write the document and your replies in English. If the developer asks for the guide in \
+Arabic (or another language), call `set_document_language` FIRST (it relabels every section \
+heading), then translate each section's body with `update_document_section`.
+"""
+
+
 def _client() -> genai.Client:
     return genai.Client(api_key=settings.gemini_api_key)
 
@@ -259,6 +294,26 @@ def _doc_tools() -> list[types.FunctionDeclaration]:
             name="read_document",
             description="Return the current full document Markdown so you can see your previous edits.",
             parameters=types.Schema(type="OBJECT", properties={}),
+        ),
+        types.FunctionDeclaration(
+            name="set_document_language",
+            description=(
+                "Switch the guide's language. Relabels ALL section headings to the target "
+                "language and sets the chat's language so future replies match. Call this "
+                "BEFORE translating bodies when the developer asks for the guide in another "
+                "language, then rewrite each section's body in the new language with "
+                "update_document_section."
+            ),
+            parameters=types.Schema(
+                type="OBJECT",
+                properties={
+                    "language": types.Schema(
+                        type="STRING",
+                        description="Target language: 'ar' for Arabic or 'en' for English.",
+                    ),
+                },
+                required=["language"],
+            ),
         ),
     ]
 
@@ -448,10 +503,15 @@ def _browser_config_block(chat: ChatMeta) -> str:
 
 
 def _system_instruction(chat: ChatMeta, doc: str, browser_on: bool) -> str:
-    sections = "\n".join(f"- {s}" for s in document_editor.section_names_for_prompt(browser_on))
+    language = "ar" if (chat.language or "en").lower() == "ar" else "en"
+    sections = "\n".join(
+        f"- {s}" for s in document_editor.section_names_for_prompt(browser_on, language)
+    )
     guidance = (BROWSER_ON_GUIDANCE + _browser_config_block(chat)) if browser_on else BROWSER_OFF_GUIDANCE
+    language_directive = LANGUAGE_DIRECTIVE_AR if language == "ar" else LANGUAGE_DIRECTIVE_EN
     return SYSTEM_PROMPT_TEMPLATE.format(
         section_list=sections,
+        language_directive=language_directive,
         name=chat.name,
         browser_state="ENABLED" if browser_on else "DISABLED",
         browser_guidance=guidance,
@@ -499,6 +559,17 @@ async def _exec_tool(
     if name == "read_document":
         doc = store.read_guide(chat.id) or ""
         return ({"document": doc}, False, None)
+
+    if name == "set_document_language":
+        target = str(args.get("language", "")).lower()
+        lang = "ar" if target in ("ar", "arabic", "العربية") else "en"
+        doc = store.read_guide(chat.id) or ""
+        new_doc = document_editor.set_document_language(doc, lang)
+        ok = store.write_guide(chat.id, new_doc)
+        if ok:
+            store.update_chat(chat.id, language=lang)
+            chat.language = lang  # keep this turn's prompt/state consistent
+        return ({"ok": ok, "language": lang}, ok, None)
 
     if name == "browser_open":
         if not browser_on:
@@ -660,12 +731,14 @@ async def run_turn(
     # chat's persistent toggle is off.
     browser_on = chat.browser_enabled or force_browse
     base_url = annotator.asset_url_base_for(chat.id)
+    client = _client()
 
     # --- Phase 0: process attachments before the model turn ---------------
-    # Images are annotated + appended to the doc; PDFs are saved + linked. Both
-    # are turned into Gemini Parts so the model sees them this turn. Events are
-    # streamed as each file finishes. `file_parts` carry the bytes for this turn
-    # only; after the loop they're collapsed to text refs (`collapsed_refs`).
+    # Images are annotated + appended to the doc; PDFs and videos are saved +
+    # linked. All are turned into Gemini Parts so the model sees them this turn
+    # (videos over the inline limit go through the Files API). Events stream as
+    # each file finishes. `file_parts` carry the bytes for this turn only; after
+    # the loop they're collapsed to text refs (`collapsed_refs`).
     file_parts: list[types.Part] = []
     notes: list[str] = []
     collapsed_refs: list[str] = []
@@ -732,6 +805,76 @@ async def run_turn(
                 f"'Attachments & References' section). Use it as reference when documenting this page."
             )
             collapsed_refs.append(f"PDF '{att.filename}' (linked in document)")
+
+        elif att.is_video:
+            files_dir = annotator.assets_root_for(chat.id, chat.current_version) / "files"
+            files_dir.mkdir(parents=True, exist_ok=True)
+            saved = _safe_asset_name(att.filename, ".mp4")
+            saved_path = files_dir / saved
+            saved_path.write_bytes(att.data)
+            file_url = f"{base_url}/files/{saved}"
+            doc = store.read_guide(chat.id) or ""
+            try:
+                new_doc = document_editor.link_attachment(
+                    doc, att.filename, file_url, note="screen recording"
+                )
+                store.write_guide(chat.id, new_doc)
+            except Exception:
+                pass
+
+            # Small clips go inline; larger recordings upload via the Files API,
+            # which we poll until the file is ACTIVE before referencing it.
+            part: types.Part | None = None
+            err: str | None = None
+            try:
+                if len(att.data) <= INLINE_VIDEO_LIMIT:
+                    part = types.Part.from_bytes(data=att.data, mime_type=att.mime)
+                else:
+                    gfile = await client.aio.files.upload(
+                        file=str(saved_path), config={"mime_type": att.mime}
+                    )
+                    waited = 0.0
+                    while _file_state(gfile) == "PROCESSING" and waited < 180:
+                        await asyncio.sleep(2)
+                        waited += 2
+                        gfile = await client.aio.files.get(name=gfile.name)
+                    state = _file_state(gfile)
+                    if state == "ACTIVE":
+                        part = types.Part.from_uri(
+                            file_uri=gfile.uri, mime_type=gfile.mime_type or att.mime
+                        )
+                    else:
+                        err = f"video processing returned state {state or 'UNKNOWN'}"
+            except Exception as e:
+                err = f"{type(e).__name__}: {e}"
+
+            event: dict[str, Any] = {
+                "type": "attachment",
+                "kind": "video",
+                "name": att.filename,
+                "file_url": file_url,
+            }
+            if err:
+                event["error"] = err
+            yield _sse(event)
+            yield _sse({"type": "doc_updated"})
+
+            if part is not None:
+                file_parts.append(part)
+                notes.append(
+                    f"User attached a screen recording '{att.filename}'. Watch it and use what "
+                    f"you observe — the steps taken, fields filled, validation/errors shown, and "
+                    f"the final result — to document this page. The recording is also linked in "
+                    f"the document's 'Attachments & References' section."
+                )
+                collapsed_refs.append(f"screen recording '{att.filename}' (analyzed)")
+            else:
+                notes.append(
+                    f"User attached a screen recording '{att.filename}' but it could not be "
+                    f"analyzed ({err}). It is linked in the document's references; let them know "
+                    f"and ask them to re-upload (smaller/shorter) if they want it documented."
+                )
+                collapsed_refs.append(f"screen recording '{att.filename}' (not analyzed)")
         else:
             notes.append(f"Attached file '{att.filename}' has an unsupported type and was ignored.")
 
@@ -746,7 +889,6 @@ async def run_turn(
     )
     history.append(user_content)
 
-    client = _client()
     doc = store.read_guide(chat.id) or ""  # read AFTER attachment writes so the prompt sees them
     config = types.GenerateContentConfig(
         system_instruction=_system_instruction(chat, doc, browser_on),

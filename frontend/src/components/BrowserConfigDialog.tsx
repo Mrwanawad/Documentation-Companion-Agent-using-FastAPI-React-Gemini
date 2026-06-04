@@ -86,6 +86,7 @@ export function BrowserConfigDialog({ chat, onClose, onSaved }: Props) {
             placeholder="Anything the agent should know — e.g. 'use the Staging tenant', '2FA code will be texted'…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+            dir="auto"
             rows={3}
           />
         </div>

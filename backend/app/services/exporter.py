@@ -47,19 +47,38 @@ body { margin: 0; background: #f4f5f7; }
 .doc th, .doc td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; vertical-align: top; }
 .doc th { background: #f7f8fa; }
 .doc blockquote { border-left: 3px solid #d1d5db; margin: 8px 0; padding: 2px 14px; color: #4b5563; }
+.doc[dir="rtl"] { text-align: right; }
+.doc[dir="rtl"] th, .doc[dir="rtl"] td { text-align: right; }
+.doc[dir="rtl"] blockquote { border-left: none; border-right: 3px solid #d1d5db; }
+.doc[dir="rtl"] ul, .doc[dir="rtl"] ol { padding-left: 0; padding-right: 1.6em; }
 @media print { body { background: #fff; } .doc { box-shadow: none; margin: 0; max-width: none; } }
 """
 
 HTML_TEMPLATE = """<!doctype html>
-<html lang="en">
+<html lang="{lang}" dir="{dir}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <style>{css}</style>
 </head>
-<body><article class="doc">{body}</article></body>
+<body><article class="doc" dir="{dir}">{body}</article></body>
 </html>"""
+
+
+# Arabic + Arabic presentation forms vs. Latin letters — used to pick the export
+# writing direction from the guide's content (no language flag needed here).
+_RTL_CHARS = re.compile(r"[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
+_LTR_CHARS = re.compile(r"[A-Za-zÀ-ɏ]")
+
+
+def _detect_dir(text: str) -> tuple[str, str]:
+    """Return (dir, lang) for the document based on its dominant script."""
+    rtl = len(_RTL_CHARS.findall(text))
+    if rtl == 0:
+        return "ltr", "en"
+    ltr = len(_LTR_CHARS.findall(text))
+    return ("rtl", "ar") if rtl > ltr else ("ltr", "en")
 
 
 def _inline_images(html_body: str, chat_id: str, version: str) -> str:
@@ -88,6 +107,9 @@ def render_html(chat_id: str, version: str, title: str) -> Optional[str]:
     content = store.read_guide(chat_id, version)
     if content is None:
         return None
+    direction, lang = _detect_dir(content)
     body = md.markdown(content, extensions=["tables", "fenced_code", "sane_lists"])
     body = _inline_images(body, chat_id, version)
-    return HTML_TEMPLATE.format(title=html.escape(title), css=DOC_CSS, body=body)
+    return HTML_TEMPLATE.format(
+        title=html.escape(title), css=DOC_CSS, body=body, dir=direction, lang=lang
+    )

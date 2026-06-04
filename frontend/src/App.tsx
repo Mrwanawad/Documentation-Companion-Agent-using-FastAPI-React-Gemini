@@ -4,7 +4,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { CanvasPanel } from "./components/CanvasPanel";
 import { NewChatDialog } from "./components/NewChatDialog";
 import { api } from "./api/client";
-import type { ChatMeta } from "./types";
+import type { ChatMeta, DocLanguage } from "./types";
 
 function loadBool(key: string, fallback: boolean): boolean {
   const v = localStorage.getItem(key);
@@ -61,8 +61,8 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }
 
-  async function handleCreate(name: string, browserEnabled: boolean) {
-    const created = await api.createChat(name, browserEnabled);
+  async function handleCreate(name: string, browserEnabled: boolean, language: DocLanguage) {
+    const created = await api.createChat(name, browserEnabled, language);
     setShowNew(false);
     await refresh();
     setActiveId(created.id);

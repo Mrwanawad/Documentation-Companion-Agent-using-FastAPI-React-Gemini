@@ -25,12 +25,17 @@ router = APIRouter(prefix="/api/chats", tags=["messages"])
 _history: dict[str, list[types.Content]] = defaultdict(list)
 
 
-MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB per attachment
+MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB per image/PDF
+MAX_VIDEO_BYTES = 200 * 1024 * 1024  # 200 MB per screen recording
 MAX_FILES_PER_MESSAGE = 8
 
 
 def _is_allowed(content_type: str) -> bool:
-    return content_type.startswith("image/") or content_type == "application/pdf"
+    return (
+        content_type.startswith("image/")
+        or content_type == "application/pdf"
+        or content_type.startswith("video/")
+    )
 
 
 @router.post("/{chat_id}/messages")
@@ -60,14 +65,15 @@ async def post_message(
                 status_code=415,
                 detail=(
                     f"Unsupported file type '{content_type or 'unknown'}' for "
-                    f"'{f.filename}'. Only images and PDFs are allowed."
+                    f"'{f.filename}'. Only images, PDFs, and videos are allowed."
                 ),
             )
         raw = await f.read()
-        if len(raw) > MAX_FILE_BYTES:
+        limit = MAX_VIDEO_BYTES if content_type.startswith("video/") else MAX_FILE_BYTES
+        if len(raw) > limit:
             raise HTTPException(
                 status_code=413,
-                detail=f"'{f.filename}' exceeds the {MAX_FILE_BYTES // (1024 * 1024)} MB limit.",
+                detail=f"'{f.filename}' exceeds the {limit // (1024 * 1024)} MB limit.",
             )
         attachments.append(
             Attachment(filename=f.filename or "upload", mime=content_type, data=raw)

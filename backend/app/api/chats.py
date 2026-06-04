@@ -21,7 +21,9 @@ def create_chat(body: ChatCreate) -> ChatMeta:
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
-    return store.create_chat(name=name, browser_enabled=body.browser_enabled)
+    return store.create_chat(
+        name=name, browser_enabled=body.browser_enabled, language=body.language
+    )
 
 
 @router.get("/{chat_id}", response_model=ChatMeta)

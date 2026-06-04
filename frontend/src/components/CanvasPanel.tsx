@@ -9,6 +9,17 @@ import { nord } from "@milkdown/theme-nord";
 import "@milkdown/theme-nord/style.css";
 import { api } from "../api/client";
 
+// Pick the document's writing direction from its content so an Arabic guide
+// lays out right-to-left without needing any per-chat flag threaded down here.
+const RTL_CHARS = /[֑-߿יִ-﷽ﹰ-ﻼ]/g;
+const LTR_CHARS = /[A-Za-zÀ-ɏ]/g;
+function detectDir(text: string): "ltr" | "rtl" {
+  const rtl = (text.match(RTL_CHARS) || []).length;
+  if (rtl === 0) return "ltr";
+  const ltr = (text.match(LTR_CHARS) || []).length;
+  return rtl > ltr ? "rtl" : "ltr";
+}
+
 interface Props {
   chatId: string;
   version: string;
@@ -193,6 +204,8 @@ export function CanvasPanel({ chatId, version, readonly, refreshSignal, onCollap
     baselineReadyRef.current = false; // poll re-baselines from reloaded content
   }
 
+  const docDir = detectDir(sourceDraft || initial);
+
   return (
     <section className="canvas-panel">
       <div className="canvas-header">
@@ -248,7 +261,11 @@ export function CanvasPanel({ chatId, version, readonly, refreshSignal, onCollap
           <div className="canvas-empty">Loading document…</div>
         ) : (
           <>
-            <div className="md-editor" style={{ display: mode === "source" ? "none" : "block" }}>
+            <div
+              className="md-editor"
+              dir={docDir}
+              style={{ display: mode === "source" ? "none" : "block" }}
+            >
               <MilkdownProvider>
                 <MilkdownDoc initial={initial} editable={!readonly} onReady={onReady} onChange={onEditorChange} />
               </MilkdownProvider>
@@ -259,6 +276,7 @@ export function CanvasPanel({ chatId, version, readonly, refreshSignal, onCollap
                 aria-label="Markdown source"
                 placeholder="Markdown source…"
                 value={sourceDraft}
+                dir="auto"
                 spellCheck={false}
                 readOnly={readonly}
                 onChange={(e) => {

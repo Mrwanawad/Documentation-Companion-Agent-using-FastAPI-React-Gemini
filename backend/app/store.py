@@ -6,62 +6,7 @@ from typing import Optional
 
 from .config import settings
 from .models import ChatMeta, ChatStatus, utcnow_iso
-
-
-GUIDE_TEMPLATE = """# {name}
-
-_Page-level user guide. This document describes a single page/screen within the system._
-
-## Document Status
-- **Status:** Draft
-- **Version:** v1.0
-
-## Version History
-- v1.0 — Draft created
-
-## Page Overview
-_What this page is and what it lets the user do. One short paragraph._
-
-## Where To Find This Page
-_Navigation path from the app entry point (e.g. Sidebar → Projects → Boards)._
-
-## Who Can Access
-_Roles and permissions required to view/use this page._
-
-## Page Layout
-_The main visual regions of the page (header, list, form, side panel, footer)._
-
-## How To Use This Page
-_Step-by-step instructions for the most common tasks performed on this page._
-
-## Form Fields & Validations
-_For pages with inputs: each field's label, type, required?, validation rule, default._
-
-## Tips & Shortcuts
-_Keyboard shortcuts, less obvious behaviors, power-user tips._
-
-## Browser Walkthrough Evidence
-_TBD_
-
-## Screenshots And Assets
-_Annotated screenshots of the page with element tables go here._
-
-## Limitations & Known Issues
-_Things this page can't do today, or known bugs._
-
-## Gaps & Red Flags
-_None recorded yet._
-
-## FAQ
-_Common questions about this page._
-
-## Attachments & References
-_None yet._
-
-## Approval
-- **Reviewer:** Coject R&D Team
-- **State:** pending
-"""
+from .services import document_editor
 
 
 def _ws() -> Path:
@@ -115,9 +60,10 @@ def get_chat(chat_id: str) -> Optional[ChatMeta]:
     return ChatMeta(**json.loads(path.read_text()))
 
 
-def create_chat(name: str, browser_enabled: bool) -> ChatMeta:
+def create_chat(name: str, browser_enabled: bool, language: str = "en") -> ChatMeta:
+    language = "ar" if str(language).lower() in ("ar", "arabic") else "en"
     chat_id = uuid.uuid4().hex[:12]
-    meta = ChatMeta(id=chat_id, name=name, browser_enabled=browser_enabled)
+    meta = ChatMeta(id=chat_id, name=name, browser_enabled=browser_enabled, language=language)
     chat_dir = _chat_dir(chat_id)
     chat_dir.mkdir(parents=True, exist_ok=True)
     _meta_path(chat_id).write_text(meta.model_dump_json(indent=2))
@@ -126,12 +72,12 @@ def create_chat(name: str, browser_enabled: bool) -> ChatMeta:
     (doc_dir / "assets" / "uploaded").mkdir(parents=True, exist_ok=True)
     (doc_dir / "assets" / "annotated").mkdir(parents=True, exist_ok=True)
     (doc_dir / "assets" / "files").mkdir(parents=True, exist_ok=True)
-    _guide_path(chat_id).write_text(GUIDE_TEMPLATE.format(name=name))
+    _guide_path(chat_id).write_text(document_editor.guide_template(name, language))
     _metadata_path(chat_id).write_text(json.dumps({
         "product": name,
         "version": "v1.0",
         "status": "draft",
-        "language": "en",
+        "language": language,
         "approvedBy": "TBD",
         "approvedAt": "TBD",
         "source": "Documentation Companion Agent",

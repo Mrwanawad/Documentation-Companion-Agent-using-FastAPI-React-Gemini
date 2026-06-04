@@ -17,7 +17,8 @@ The app has two processes you run side by side:
 | **Node.js** | 18+ (20+ recommended) | For the Vite frontend **and** for `npx chrome-devtools-mcp` |
 | **npm / npx** | bundled with Node | `npx` launches the browser-automation server |
 | **Google Chrome** | recent stable | Driven headlessly by `chrome-devtools-mcp` (only needed if you use the browser walkthrough) |
-| **Gemini API key** | — | Get one from [Google AI Studio](https://aistudio.google.com/apikey) |
+| **Microphone** | — | Optional — only for **voice input** (the mic button). Works in any modern browser; audio is transcribed by Gemini |
+| **Gemini API key** | — | Get one from [Google AI Studio](https://aistudio.google.com/apikey). Powers chat, vision, **video understanding**, and **voice transcription** |
 
 Check what you have:
 
@@ -138,10 +139,12 @@ Open <http://localhost:5173>. The dev server proxies every `/api/*` request to t
 ## 4. First run — try it out
 
 1. Click **+ New** in the sidebar.
-2. Name the page (e.g. *Login page* or *Create invoice form*) and choose whether to enable **Browser walkthrough**.
-3. Describe the page in the chat. The agent interviews you and writes the guide on the right; click **Preview/Edit** in the canvas to read or hand-edit the Markdown.
-4. **Attach a screenshot** (📎) to get an annotated diagram with a numbered element table appended to *Screenshots And Assets*.
-5. If browser walkthrough is on, give the agent the page URL — it will open Chrome, capture evidence, and **ask you before entering any credentials**.
+2. Name the page (e.g. *Login page* or *Create invoice form*), pick the **document language** (English / العربية), and choose whether to enable **Browser walkthrough**.
+3. Describe the page in the chat. The agent interviews you and writes the guide on the right; click **Source** in the canvas to read or hand-edit the Markdown. An Arabic guide lays out right-to-left automatically.
+4. **Attach** a screenshot, PDF, or **screen recording** (📎, paste, or drag & drop). Screenshots become annotated diagrams; videos are transcribed into the guide.
+5. **Dictate by voice** — click the 🎤 mic, speak, click it again, and Gemini transcribes your words into the message box (English or Arabic, auto-detected). Your browser will ask for microphone permission the first time.
+6. Want the whole guide in another language mid-chat? Just ask — e.g. *"اكتب الدليل بالعربية"* / *"switch the document to Arabic"* — and the agent relabels the sections and translates.
+7. If browser walkthrough is on, give the agent the page URL — it will open Chrome, capture evidence, and **ask you before entering any credentials**.
 
 > **First browser walkthrough is slow.** The first `browser_open` runs `npx -y chrome-devtools-mcp@latest`, which downloads the MCP server (and Chrome, if needed). This needs internet access and can take a minute; later runs are fast.
 
@@ -177,8 +180,11 @@ If you serve `frontend/dist/` from a different origin than the API, add that ori
 | Frontend loads but every action fails / network errors | Backend isn't running on port 8000, or you started the frontend without the backend. Start both. |
 | `browser_open` errors or hangs the first time | `npx`/Chrome not installed, or no internet for the first `chrome-devtools-mcp` download. Verify `npx --version` and that Chrome is installed. |
 | Annotation upload returns `502 Annotation failed` | Gemini vision call failed — usually a bad/over-quota API key or an unsupported image. Check the backend logs. |
+| Mic button does nothing / "microphone was blocked" | The browser denied mic access — allow it for the site and retry. Voice needs a `localhost`/HTTPS origin (the dev server is fine). |
+| `Couldn't transcribe the audio` | The `/api/transcribe` Gemini call failed — bad/over-quota key, or you're on an old backend without the route (restart uvicorn). |
+| Voice/video features missing entirely | You're running an older backend build — restart uvicorn so the new `audio` router and video handling load. |
 | `workspace/` appears in the wrong place | You launched uvicorn from outside `backend/`. Stop it, `cd backend`, and rerun. |
-| `413` on upload | Image exceeds the 20 MB cap (or the document already has 100 images). |
+| `413` on upload | File exceeds its cap (20 MB image/PDF, 200 MB video, 25 MB voice clip) or the document already has 100 images. |
 | Editing the document does nothing / Save disabled | The chat is **approved** and therefore read-only. Change its status first. |
 
 ### Resetting state

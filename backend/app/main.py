@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import chats, messages, uploads
+from .api import audio, chats, messages, uploads
 from .config import settings
 from .services import browser as browser_service
 
@@ -24,6 +24,7 @@ app.add_middleware(
 app.include_router(chats.router)
 app.include_router(messages.router)
 app.include_router(uploads.router)
+app.include_router(audio.router)
 
 
 @app.get("/api/health")
