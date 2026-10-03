@@ -40,7 +40,7 @@ export function Sidebar({ chats, activeId, collapsed, onToggleCollapse, onSelect
       <div className="sidebar-header">
         <div className="brand">
           <span className="brand-mark">&lt;j&gt;</span>
-          <span>Coject Docs</span>
+          <span>Docs</span>
         </div>
         <div className="sidebar-header-actions">
           <button type="button" className="new-chat-btn" onClick={onNew}>+ New</button>

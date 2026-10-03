@@ -203,7 +203,7 @@ def _draw_boxes(img: Image.Image, elements: list[Element]) -> Image.Image:
     draw = ImageDraw.Draw(out, "RGBA")
     w, h = out.size
 
-    box_color = (0, 229, 153, 255)  # Coject mint
+    box_color = (0, 229, 153, 255)  # accent mint
     label_bg = (0, 0, 0, 220)
     label_fg = (255, 255, 255, 255)
     font_size = max(14, min(28, w // 60))

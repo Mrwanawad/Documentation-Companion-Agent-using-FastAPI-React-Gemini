@@ -52,7 +52,7 @@ def _file_state(f: Any) -> str:
     return str(getattr(state, "name", state) or "").upper()
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are the Documentation Companion Agent for Coject. \
+SYSTEM_PROMPT_TEMPLATE = """You are the Documentation Companion Agent for Product Owners and PMs. \
 Your job is to interview a developer about ONE SPECIFIC PAGE of a SaaS or ERP system \
 and produce a reviewable Markdown user guide for that page — not for the entire \
 product, just this single page/screen.

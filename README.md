@@ -2,7 +2,9 @@
 
 > An AI agent that interviews a developer about **one page** of a SaaS/ERP product and writes a reviewable Markdown user guide for that page — verifying claims against a real browser and turning screenshots into annotated, labelled diagrams along the way.
 
-Built for **Coject**. The whole product runs on **Gemini 3** as its sole LLM — both for the conversational agent (tool calling) and for vision (structured-output image annotation).
+Built for **Product Owners and PMs**. The whole product runs on **Gemini 3** as its sole LLM — both for the conversational agent (tool calling) and for vision (structured-output image annotation).
+
+> **Status:** local tool, run on your own machine. Works end-to-end (chat, guide editing, screenshots, video, voice, browser walkthrough). **No automated test suite yet.** Not designed for public deployment (no authentication).
 
 ---
 
@@ -192,23 +194,47 @@ The frontend talks to the backend through Vite's dev proxy (`/api → http://loc
 
 ---
 
-## Getting started
+## Quick start
 
-See **[SETUP.md](SETUP.md)** for the full setup-and-run guide. The short version:
+**Requirements:** Python 3.11+ (3.12 tested), Node.js 18+ (20+ recommended), a [Gemini API key](https://aistudio.google.com/apikey). Google Chrome is optional (browser walkthrough only). Full details in **[SETUP.md](SETUP.md)**.
 
+**1. Backend** (terminal 1)
+
+macOS / Linux:
 ```bash
-# 1. Backend
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # then put your GEMINI_API_KEY in .env
+cp .env.example .env          # then set GEMINI_API_KEY in .env
 uvicorn app.main:app --reload --port 8000
+```
 
-# 2. Frontend (in a second terminal)
+Windows (PowerShell):
+```powershell
+cd backend
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env        # then set GEMINI_API_KEY in .env
+uvicorn app.main:app --reload --port 8000
+```
+
+**2. Frontend** (terminal 2)
+```bash
 cd frontend
 npm install
 npm run dev                   # open http://localhost:5173
 ```
+
+Backend API docs: `http://localhost:8000/docs`.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Agent replies fail / "API key" error | `GEMINI_API_KEY` missing or empty in `backend/.env`. Restart uvicorn after editing. |
+| Browser walkthrough does nothing | Needs `npx` on PATH and network on first run (downloads `chrome-devtools-mcp`). Install Node 18+. |
+| `pip install` conflict | Use a fresh venv; `requirements.txt` pins versions that resolve together. |
+| Frontend shows no chats / network error | Backend not running on port 8000. Start it first. |
 
 ---
 
@@ -216,7 +242,7 @@ npm run dev                   # open http://localhost:5173
 
 - **Asset serving is path-traversal hardened** — only plain filenames under the chat's `uploaded`/`annotated`/`files` dirs are served ([uploads.py](backend/app/api/uploads.py)).
 - **Credentials policy** — the agent is instructed to stop and ask before filling any password/OTP/token, never to reuse credentials, and to respect "skip login". Secret values are masked in recorded evidence.
-- **The app itself has no authentication** — it's built to run locally for an internal R&D workflow. Don't expose it to the public internet as-is.
+- **The app itself has no authentication** — it's built to run locally on a single machine. Don't expose it to the public internet as-is.
 - **Browser walkthrough needs `npx` + Chrome.** The first `browser_open` downloads `chrome-devtools-mcp@latest` via `npx`, so the first run needs network access.
 - **Voice input needs a microphone + Gemini key.** Audio is recorded in the browser (mic permission prompt) and sent to Gemini for transcription via `POST /api/transcribe`; it never leaves your machine except to the Gemini API.
 - **Upload limits:** 20 MB per image/PDF, 200 MB per video, 100 images per document; 25 MB per voice clip.
@@ -224,10 +250,14 @@ npm run dev                   # open http://localhost:5173
 
 ---
 
+## Repository hygiene
+
+Never committed (git-ignored): `backend/.env` (API key), `workspace/` (chat and document data), `node_modules/`, `.venv/`, `dist/`, logs. Committed on purpose: `backend/.env.example`, `frontend/package.json` and `package-lock.json`, `backend/requirements.txt`.
+
 ## Project structure
 
 ```
-documentation companion/
+documentation-companion-agent/
 ├── README.md                      # this file
 ├── SETUP.md                       # setup & run guide
 ├── backend/

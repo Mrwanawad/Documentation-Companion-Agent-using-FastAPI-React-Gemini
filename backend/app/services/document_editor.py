@@ -131,8 +131,8 @@ _PLACEHOLDERS: dict[str, dict[str, str]] = {
         "ar": "_لا يوجد بعد._",
     },
     "Approval": {
-        "en": "- **Reviewer:** Coject R&D Team\n- **State:** pending",
-        "ar": "- **المراجِع:** فريق البحث والتطوير في Coject\n- **الحالة:** قيد الانتظار",
+        "en": "- **Reviewer:** Product Team\n- **State:** pending",
+        "ar": "- **المراجِع:** فريق المنتج\n- **الحالة:** قيد الانتظار",
     },
 }
 

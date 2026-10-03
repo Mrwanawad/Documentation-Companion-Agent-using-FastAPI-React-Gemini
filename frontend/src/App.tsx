@@ -100,7 +100,7 @@ export default function App() {
         {active === null ? (
           <div className="empty-workspace empty-workspace-wrap">
             <h1>
-              Coject <span className="empty-accent">Documentation Companion</span>
+              <span className="empty-accent">Documentation Companion</span>
             </h1>
             <p>
               Create a new chat to start documenting a product or feature. The agent will interview you and write a reviewable Markdown guide.
